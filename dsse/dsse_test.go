@@ -44,17 +44,17 @@ func createTestKey() (cryptoutil.Signer, cryptoutil.Verifier, error) {
 func TestSign(t *testing.T) {
 	signer, _, err := createTestKey()
 	require.NoError(t, err)
-	_, err = Sign("dummydata", bytes.NewReader([]byte("this is some dummy data")), signer)
+	_, err = Sign("dummydata", bytes.NewReader([]byte("this is some dummy data")), SignWithSigners(signer))
 	require.NoError(t, err)
 }
 
 func TestVerify(t *testing.T) {
 	signer, verifier, err := createTestKey()
 	require.NoError(t, err)
-	env, err := Sign("dummydata", bytes.NewReader([]byte("this is some dummy data")), signer)
+	env, err := Sign("dummydata", bytes.NewReader([]byte("this is some dummy data")), SignWithSigners(signer))
 	require.NoError(t, err)
 	approvedVerifiers, err := env.Verify(WithVerifiers([]cryptoutil.Verifier{verifier}))
-	assert.ElementsMatch(t, approvedVerifiers, []cryptoutil.Verifier{verifier})
+	assert.ElementsMatch(t, approvedVerifiers, []PassedVerifier{{Verifier: verifier}})
 	require.NoError(t, err)
 }
 
@@ -63,7 +63,7 @@ func TestFailVerify(t *testing.T) {
 	require.NoError(t, err)
 	_, verifier, err := createTestKey()
 	require.NoError(t, err)
-	env, err := Sign("dummydata", bytes.NewReader([]byte("this is some dummy data")), signer)
+	env, err := Sign("dummydata", bytes.NewReader([]byte("this is some dummy data")), SignWithSigners(signer))
 	require.NoError(t, err)
 	approvedVerifiers, err := env.Verify(WithVerifiers([]cryptoutil.Verifier{verifier}))
 	assert.Empty(t, approvedVerifiers)
@@ -73,30 +73,32 @@ func TestFailVerify(t *testing.T) {
 func TestMultiSigners(t *testing.T) {
 	signers := []cryptoutil.Signer{}
 	verifiers := []cryptoutil.Verifier{}
+	expectedVerifiers := []PassedVerifier{}
 	for i := 0; i < 5; i++ {
 		s, v, err := createTestKey()
 		require.NoError(t, err)
 		signers = append(signers, s)
 		verifiers = append(verifiers, v)
+		expectedVerifiers = append(expectedVerifiers, PassedVerifier{Verifier: v})
 	}
 
-	env, err := Sign("dummydata", bytes.NewReader([]byte("this is some dummy data")), signers...)
+	env, err := Sign("dummydata", bytes.NewReader([]byte("this is some dummy data")), SignWithSigners(signers...))
 	require.NoError(t, err)
 
 	approvedVerifiers, err := env.Verify(WithVerifiers(verifiers))
 	require.NoError(t, err)
-	assert.ElementsMatch(t, approvedVerifiers, verifiers)
+	assert.ElementsMatch(t, approvedVerifiers, expectedVerifiers)
 }
 
 func TestThreshold(t *testing.T) {
 	signers := []cryptoutil.Signer{}
-	expectedVerifiers := []cryptoutil.Verifier{}
+	expectedVerifiers := []PassedVerifier{}
 	verifiers := []cryptoutil.Verifier{}
 	for i := 0; i < 5; i++ {
 		s, v, err := createTestKey()
 		require.NoError(t, err)
 		signers = append(signers, s)
-		expectedVerifiers = append(expectedVerifiers, v)
+		expectedVerifiers = append(expectedVerifiers, PassedVerifier{Verifier: v})
 		verifiers = append(verifiers, v)
 	}
 
@@ -107,7 +109,7 @@ func TestThreshold(t *testing.T) {
 		verifiers = append(verifiers, v)
 	}
 
-	env, err := Sign("dummydata", bytes.NewReader([]byte("this is some dummy data")), signers...)
+	env, err := Sign("dummydata", bytes.NewReader([]byte("this is some dummy data")), SignWithSigners(signers...))
 	require.NoError(t, err)
 
 	approvedVerifiers, err := env.Verify(WithVerifiers(verifiers), WithThreshold(5))
