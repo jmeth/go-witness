@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"io"
 	"time"
 
 	"github.com/testifysec/go-witness/cryptoutil"
 )
 
 type TimestampVerifier interface {
-	Verify(context.Context, []byte) (time.Time, error)
+	Verify(context.Context, io.Reader, io.Reader) (time.Time, error)
 }
 
 type verificationOptions struct {
@@ -23,27 +24,33 @@ type verificationOptions struct {
 
 type VerificationOption func(*verificationOptions)
 
-func WithRoots(roots []*x509.Certificate) VerificationOption {
+func VerifyWithRoots(roots ...*x509.Certificate) VerificationOption {
 	return func(vo *verificationOptions) {
 		vo.roots = roots
 	}
 }
 
-func WithIntermediates(intermediates []*x509.Certificate) VerificationOption {
+func VerifyWithIntermediates(intermediates ...*x509.Certificate) VerificationOption {
 	return func(vo *verificationOptions) {
 		vo.intermediates = intermediates
 	}
 }
 
-func WithVerifiers(verifiers []cryptoutil.Verifier) VerificationOption {
+func VerifyWithVerifiers(verifiers ...cryptoutil.Verifier) VerificationOption {
 	return func(vo *verificationOptions) {
 		vo.verifiers = verifiers
 	}
 }
 
-func WithThreshold(threshold int) VerificationOption {
+func VerifyWithThreshold(threshold int) VerificationOption {
 	return func(vo *verificationOptions) {
 		vo.threshold = threshold
+	}
+}
+
+func VerifyWithTimestampVerifiers(verifiers ...TimestampVerifier) VerificationOption {
+	return func(vo *verificationOptions) {
+		vo.timestampVerifiers = verifiers
 	}
 }
 
@@ -98,15 +105,18 @@ func (e Envelope) Verify(opts ...VerificationOption) ([]PassedVerifier, error) {
 			} else {
 				var passedVerifier cryptoutil.Verifier
 				passedTimestampVerifiers := []TimestampVerifier{}
-				for _, timestampVerifier := range options.timestampVerifiers {
-					timestamp, err := timestampVerifier.Verify(context.TODO(), sig.Signature)
-					if err != nil {
-						continue
-					}
 
-					if verifier, err := verifyX509Time(cert, sigIntermediates, options.roots, pae, sig.Signature, timestamp); err == nil {
-						passedVerifier = verifier
-						passedTimestampVerifiers = append(passedTimestampVerifiers, timestampVerifier)
+				for _, timestampVerifier := range options.timestampVerifiers {
+					for _, sigTimestamp := range sig.Timestamps {
+						timestamp, err := timestampVerifier.Verify(context.TODO(), bytes.NewReader(sigTimestamp.Data), bytes.NewReader(sig.Signature))
+						if err != nil {
+							continue
+						}
+
+						if verifier, err := verifyX509Time(cert, sigIntermediates, options.roots, pae, sig.Signature, timestamp); err == nil {
+							passedVerifier = verifier
+							passedTimestampVerifiers = append(passedTimestampVerifiers, timestampVerifier)
+						}
 					}
 				}
 

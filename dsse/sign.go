@@ -10,7 +10,7 @@ import (
 )
 
 type Timestamper interface {
-	Timestamp(context.Context, []byte) ([]byte, error)
+	Timestamp(context.Context, io.Reader) ([]byte, error)
 }
 
 type signOptions struct {
@@ -65,7 +65,7 @@ func Sign(bodyType string, body io.Reader, opts ...SignOption) (Envelope, error)
 		}
 
 		for _, timestamper := range so.timestampers {
-			timestamp, err := timestamper.Timestamp(context.TODO(), sig)
+			timestamp, err := timestamper.Timestamp(context.TODO(), bytes.NewReader(sig))
 			if err != nil {
 				return env, err
 			}
